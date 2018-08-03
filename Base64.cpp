@@ -9,13 +9,11 @@
 using namespace Base64;
 using namespace std;
 
-const static char symbolTable[] = {
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 
-    'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '/'
-};
+// value to symbol table
+const static char symbolTable[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+// symbol to value table
 const static uint8_t valueTable[] = {
     /*' '*/0xff, /*' '*/0xff, /*' '*/0xff, /*' '*/0xff,
     /*' '*/0xff, /*' '*/0xff, /*' '*/0xff, /*' '*/0xff,
@@ -191,7 +189,6 @@ size_t Encoder::finish(uint8_t u8OutputBuffer[], size_t outputBufferSize) {
     for (size_t i = 0; i < m_remainingByteCount; i++) {
         u24 = (m_u8RemainingBuffer[i] << ((2 - i) * 8)) + u24;
     }
-    //printf("u24: 0x%08x\n", u24);
     encode(u24, (char *)u8OutputBuffer);
     for (int i = (m_remainingByteCount == 1 ? 2 : 3); i < 4; i++) {
         u8OutputBuffer[i] = '=';
