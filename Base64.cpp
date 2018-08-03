@@ -41,35 +41,64 @@ size_t Decoder::feed(uint8_t u8InputBuffer[], size_t inputSize,
         LOG_ERROR("outputBufferSize too small\n");
         return 0;
     }
-    for (size_t i = 0; i < inputSize / 4; i++) {
-        uint32_t u24 = 0;
-        for (size_t j = 0; j < 4; j++) {
-            char symbol = u8InputBuffer[i * 4 + j];
-            uint8_t u6 = 0;
-            if (symbol == '=') {
-                padding += 1;
-            } else {
-                u6 = symbol2value(symbol);
-                if (u6 >= 64) {
-                    LOG_ERROR("symbol2value error: %c => 0x%02x\n", symbol, u6);
-                    u6 = 0;
+    size_t validSymbolCount = 0;
+    uint32_t u24 = 0;
+    int remainingOffset = 0;
+    size_t totalSymbolCount = m_remainingSymbolCount + inputSize;
+    if (totalSymbolCount < 4) {
+        memcpy(m_cpRemainingSymbols + m_remainingSymbolCount, u8InputBuffer, inputSize);
+        m_remainingSymbolCount += inputSize;
+        return 0;
+    }
+    for (size_t i = 0; i < totalSymbolCount; i++) {
+        char symbol = '*';
+        if (i < m_remainingSymbolCount) {
+            symbol = m_cpRemainingSymbols[i];
+        } else {
+            symbol = u8InputBuffer[i - m_remainingSymbolCount];
+        }
+        if (validSymbolCount == 0) {
+            remainingOffset = i - m_remainingSymbolCount;
+        }
+        uint8_t u6 = 0;
+        if (symbol == '=') {
+            padding++;
+        } else {
+            u6 = symbol2value(symbol);
+            if (u6 == 0xff) { //invalid symbol
+                if (symbol != '\n') {
+                    LOG_ERROR("Invalid symbol: '%c'", symbol);
                 }
+                continue;
             }
-            u24 = (u24 << 6) + u6;
         }
-        for (size_t k = 0; (k < 3) && (outputSize + k < outputBufferSize); k++) {
-            u8OutputBuffer[outputSize + k] = (u24 >> (2 - k) * 8) & 0xff;
-        }
-        outputSize += 3;
-        if (padding == 1) {
-            outputSize -= 1;
-        } else if (padding == 2) {
-            outputSize -= 2;
+        u24 = (u24 << 6) + u6;
+        validSymbolCount++;
+        if (validSymbolCount == 4) {
+            uint8_t *pu8 = (uint8_t *)&u24;
+            for (size_t k = 0; (k < 3) && (outputSize + k < outputBufferSize); k++) {
+                u8OutputBuffer[outputSize + k] = pu8[2 - k]; // little-endian, read from the higher address
+            }
+            outputSize += 3;
+            u24 = 0;
+            validSymbolCount = 0;
+            remainingOffset = 0;
         }
     }
-    m_remainingSymbolCount = inputSize % 4;
+    if (padding == 1) {
+        outputSize -= 1;
+    } else if (padding == 2) {
+        outputSize -= 2;
+    }
+    if (remainingOffset > 0) {
+        m_remainingSymbolCount = inputSize - remainingOffset;
+    } else {
+        m_remainingSymbolCount = 0;
+    }
     if (m_remainingSymbolCount) {
-        memcpy(m_cpRemainingSymbols, u8InputBuffer + inputSize - m_remainingSymbolCount, m_remainingSymbolCount);
+        memcpy(m_cpRemainingSymbols,
+               u8InputBuffer + remainingOffset,
+               m_remainingSymbolCount);
     }
     return outputSize;
 }
@@ -115,7 +144,6 @@ size_t Encoder::feed(uint8_t u8InputBuffer[], size_t inputSize,
     if (m_remainingByteCount >= 3) {
         m_remainingByteCount = 0;
     }
-    //printf("m_remainingByteCount: %d\n", m_remainingByteCount);
     // save the remaining bytes
     if (m_remainingByteCount) {
         memcpy(m_u8RemainingBuffer, u8InputBuffer + dataLen - m_remainingByteCount, m_remainingByteCount);
