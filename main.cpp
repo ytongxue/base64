@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <unistd.h>
+#include <getopt.h>
 #include "Base64.h"
 #include "utils.h"
 
@@ -20,10 +21,53 @@ enum WorkingMode {
 int main(int argc, char **argv) {
     uint8_t u8InputBuffer[1024] = {0};
     uint8_t u8OutputBuffer[1024 * 2] = {0};
-    enum WorkingMode  mode = MODE_DECODE;
+    enum WorkingMode  mode = MODE_ENCODE;
     CodecInterface *pCodec = NULL;
     size_t totalOutputLength = 0;
     size_t lineWidth = 76;
+    // parse command line arguments
+    {
+        int c;
+        //int digit_optind = 0;
+        while (1) {
+            //int this_option_optind = optind ? optind : 1;
+            int option_index = 0;
+            static struct option long_options[] = {
+                {"decode",  no_argument,       0,  0 },
+                {"wrap",    required_argument, 0,  0 },
+                {0,         0,                 0,  0 }
+            };
+            c = getopt_long(argc, argv, "dw:",
+                            long_options, &option_index);
+            if (c == -1) {
+                break;
+            }
+            switch (c) {
+            case 0:
+                LOG_ERROR("option %s", long_options[option_index].name);
+                if (optarg) {
+                    LOG_ERROR(" with arg %s", optarg);
+                }
+                if (strcmp(long_options[option_index].name, "decode") == 0) {
+                    mode = MODE_DECODE;
+                } else if (strcmp(long_options[option_index].name, "wrap") == 0) {
+                    lineWidth = atoi(optarg);
+                    LOG_ERROR("lineWidth: %d", lineWidth);
+                }
+                break;
+            case 'd':
+                mode = MODE_DECODE;
+                break;
+            case 'w':
+                lineWidth = atoi(optarg);
+                LOG_ERROR("lineWidth: %d", lineWidth);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
     if (mode == MODE_DECODE) {
         lineWidth = 0;
         pCodec = new Decoder();
