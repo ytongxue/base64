@@ -1,0 +1,4 @@
+*.o
+bin
+bin_test
+base64

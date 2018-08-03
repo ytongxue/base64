@@ -4,21 +4,32 @@
 #include <string>
 
 namespace Base64 {
-    class Decoder {
+    class CodecInterface {
+        public:
+            virtual size_t feed(uint8_t u8InputBuffer[], size_t inputSize,
+                                uint8_t u8OutputBuffer[], size_t outputBufferSize) = 0;
+            virtual size_t finish(uint8_t u8OutputBuffer[], size_t outputBufferSize) = 0;
+            virtual ~CodecInterface() {};
+    };
+    class Decoder : public CodecInterface {
         public:
             Decoder();
-            size_t feed(const std::string &str, uint8_t u8OutputBuffer[], size_t outputBufferSize);
+            virtual size_t feed(uint8_t u8InputBuffer[], size_t inputSize,
+                                uint8_t u8OutputBuffer[], size_t outputBufferSize);
+            virtual size_t finish(uint8_t u8OutputBuffer[], size_t outputBufferSize);
         private:
             uint8_t symbol2value(char symbol);
-            std::string m_strRemaining;
+            char m_cpRemainingSymbols[4];
+            size_t m_remainingSymbolCount;
     };
-    class Encoder {
+    class Encoder : public CodecInterface {
         public:
             Encoder();
-            std::string feed(uint8_t u8Buffer[], size_t size);
-            std::string finish();
+            virtual size_t feed(uint8_t u8InputBuffer[], size_t inputSize,
+                                uint8_t u8OutputBuffer[], size_t outputBufferSize);
+            virtual size_t finish(uint8_t u8OutputBuffer[], size_t outputBufferSize);
         private:
-            std::string encode(uint32_t u24);
+            void encode(uint32_t u24, char u8Buffer[]);
             uint8_t m_u8RemainingBuffer[4];
             size_t m_remainingByteCount;
     };

@@ -18,6 +18,8 @@ const static char symbolTable[] = {
 };
 
 Decoder::Decoder() {
+    m_remainingSymbolCount = 0;
+    bzero(m_cpRemainingSymbols, sizeof(m_cpRemainingSymbols));
 }
 
 uint8_t Decoder::symbol2value(char symbol) {
@@ -31,17 +33,18 @@ uint8_t Decoder::symbol2value(char symbol) {
     return value;
 }
 
-size_t Decoder::feed(const string &str, uint8_t u8OutputBuffer[], size_t outputBufferSize) {
+size_t Decoder::feed(uint8_t u8InputBuffer[], size_t inputSize,
+                     uint8_t u8OutputBuffer[], size_t outputBufferSize) {
     size_t outputSize = 0;
     size_t padding = 0;
-    if (str.size() / 4 * 3 > outputBufferSize) {
+    if (inputSize / 4 * 3 > outputBufferSize) {
         LOG_ERROR("outputBufferSize too small\n");
         return 0;
     }
-    for (size_t i = 0; i < str.size() / 4; i++) {
+    for (size_t i = 0; i < inputSize / 4; i++) {
         uint32_t u24 = 0;
         for (size_t j = 0; j < 4; j++) {
-            char symbol = str.c_str()[i * 4 + j];
+            char symbol = u8InputBuffer[i * 4 + j];
             uint8_t u6 = 0;
             if (symbol == '=') {
                 padding += 1;
@@ -64,11 +67,15 @@ size_t Decoder::feed(const string &str, uint8_t u8OutputBuffer[], size_t outputB
             outputSize -= 2;
         }
     }
-    size_t remaining = str.size() % 4;
-    if (remaining) {
-        m_strRemaining = str.c_str() + str.size() - remaining;
+    m_remainingSymbolCount = inputSize % 4;
+    if (m_remainingSymbolCount) {
+        memcpy(m_cpRemainingSymbols, u8InputBuffer + inputSize - m_remainingSymbolCount, m_remainingSymbolCount);
     }
     return outputSize;
+}
+
+size_t Decoder::finish(uint8_t u8OutputBuffer[], size_t outputBufferSize) {
+    return 0;
 }
 
 // Encoder
@@ -78,31 +85,31 @@ Encoder::Encoder() {
     m_remainingByteCount = 0;
 }
 
-string Encoder::encode(uint32_t u24) {
-    string strResult;
+void Encoder::encode(uint32_t u24, char u8Buffer[]) {
     for (int k = 0; k < 4; k++) {
         uint8_t u6 = (u24 >> ((3 - k) * 6)) & 0x3f;
         char ch = symbolTable[u6];
-        strResult += ch;
+        u8Buffer[k] = ch;
     }
-    return strResult;
 }
 
-string Encoder::feed(uint8_t u8Buffer[], size_t size) {
-    int dataLen = size + m_remainingByteCount;
-    string strResult;
-    for (int i = 0; i < dataLen / 3; i++) {
+size_t Encoder::feed(uint8_t u8InputBuffer[], size_t inputSize,
+                     uint8_t u8OutputBuffer[], size_t outputBufferSize) {
+    size_t dataLen = inputSize + m_remainingByteCount;
+    size_t outputSize = 0;
+    for (size_t i = 0; i < dataLen / 3; i++) {
         uint32_t u24 = 0;
-        for (int j = 0; j < 3; j++) {
+        for (size_t j = 0; j < 3; j++) {
             uint8_t u8 = 0;
             if (i == 0 && j < m_remainingByteCount) {
                 u8 = m_u8RemainingBuffer[j];
             } else {
-                u8 = u8Buffer[i * 3 + j - m_remainingByteCount];
+                u8 = u8InputBuffer[i * 3 + j - m_remainingByteCount];
             }
             u24 = (u24 << 8) + u8;
         }
-        strResult += encode(u24);
+        encode(u24, (char *)u8OutputBuffer + outputSize);
+        outputSize += 4;
     }
     m_remainingByteCount = dataLen % 3;
     if (m_remainingByteCount >= 3) {
@@ -111,27 +118,23 @@ string Encoder::feed(uint8_t u8Buffer[], size_t size) {
     //printf("m_remainingByteCount: %d\n", m_remainingByteCount);
     // save the remaining bytes
     if (m_remainingByteCount) {
-        memcpy(m_u8RemainingBuffer, u8Buffer + dataLen - m_remainingByteCount, m_remainingByteCount);
+        memcpy(m_u8RemainingBuffer, u8InputBuffer + dataLen - m_remainingByteCount, m_remainingByteCount);
     }
-    return strResult;
+    return outputSize;
 }
 
-string Encoder::finish() {
-    string strResult;
+size_t Encoder::finish(uint8_t u8OutputBuffer[], size_t outputBufferSize) {
     if (m_remainingByteCount == 0) {
-        return string();
+        return 0;
     }
     uint32_t u24 = 0;
-    for (int i = 0; i < m_remainingByteCount; i++) {
+    for (size_t i = 0; i < m_remainingByteCount; i++) {
         u24 = (m_u8RemainingBuffer[i] << ((2 - i) * 8)) + u24;
     }
     //printf("u24: 0x%08x\n", u24);
-    string strFull = encode(u24);
-    for (int i = 0; i < (m_remainingByteCount == 1 ? 2 : 3); i++) {
-        strResult += strFull.c_str()[i];
+    encode(u24, (char *)u8OutputBuffer);
+    for (int i = (m_remainingByteCount == 1 ? 2 : 3); i < 4; i++) {
+        u8OutputBuffer[i] = '=';
     }
-    for (int i = 0; i < (m_remainingByteCount == 1 ? 2 : 1); i++) {
-        strResult += "=";
-    }
-    return strResult;
+    return 4;
 }
